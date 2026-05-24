@@ -1,0 +1,16 @@
+.env
+backend/.env
+__pycache__/
+backend/__pycache__/
+backend/app/**/__pycache__/
+backend/worker/__pycache__/
+backend/.venv/
+*.pyc
+*.png
+*.jpg
+*.jpeg
+node_modules/
+.idea/
+.claude/
+extra_info.txt
+docs/BRIEF.md
