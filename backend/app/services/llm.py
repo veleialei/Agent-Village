@@ -18,12 +18,18 @@ def chat(system: str, messages: list[dict], max_tokens: int = 200) -> str:
     ]
     last = messages[-1]["content"]
     session = model.start_chat(history=history)
-    response = session.send_message(last)
+    response = session.send_message(
+        last,
+        generation_config=genai.types.GenerationConfig(max_output_tokens=max_tokens),
+    )
     return response.text.strip()
 
 
 def complete(prompt: str, max_tokens: int = 100) -> str:
     """Single-turn completion."""
     model = genai.GenerativeModel(model_name=_MODEL)
-    response = model.generate_content(prompt)
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(max_output_tokens=max_tokens),
+    )
     return response.text.strip()

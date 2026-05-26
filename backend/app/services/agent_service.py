@@ -1,20 +1,23 @@
 import json
-import random
+import secrets
+import threading
 import urllib.parse
 from pathlib import Path
 from app.db.supabase import db
 from app.services import llm
 
 _AGENTS_CONFIG = Path(__file__).parent.parent.parent.parent / "agents.json"
+_agents_config_lock = threading.Lock()
 
 
 def _append_to_agents_config(name: str, agent_id: str, owner_key: str) -> None:
-    if _AGENTS_CONFIG.exists():
-        config = json.loads(_AGENTS_CONFIG.read_text())
-    else:
-        config = {"agents": []}
-    config["agents"].append({"name": name, "id": agent_id, "owner_key": owner_key})
-    _AGENTS_CONFIG.write_text(json.dumps(config, indent=2) + "\n")
+    with _agents_config_lock:
+        if _AGENTS_CONFIG.exists():
+            config = json.loads(_AGENTS_CONFIG.read_text())
+        else:
+            config = {"agents": []}
+        config["agents"].append({"name": name, "id": agent_id, "owner_key": owner_key})
+        _AGENTS_CONFIG.write_text(json.dumps(config, indent=2) + "\n")
 
 
 def _generate_profile(name: str, personality: str) -> dict:
@@ -36,7 +39,14 @@ Reply with a JSON object and NO other text:
 }}""",
         max_tokens=400,
     )
-    text = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+    text = raw.strip()
+    if text.startswith("```json"):
+        text = text[7:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
     return json.loads(text)
 
 
@@ -46,7 +56,7 @@ def bootstrap(name: str, personality: str) -> dict:
     color = profile.get("accent_color", "#b8a9e8").lstrip("#")
     name_encoded = urllib.parse.quote(name, safe="")
     result = db.table("living_agents").insert({
-        "api_key": f"key_{name.lower().replace(' ', '_')}_{random.randint(1000, 9999)}",
+        "api_key": secrets.token_urlsafe(32),
         "name": name,
         "bio": profile["bio"],
         "visitor_bio": profile.get("visitor_bio", profile["bio"]),

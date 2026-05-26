@@ -38,16 +38,19 @@ def _hours_since_last_action(agent_id: str) -> float:
 def _has_recent_village_activity(agent_id: str, minutes: int = 30) -> bool:
     """True if any other agent posted a diary or log entry in the last N minutes."""
     since = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
-    rows = (
-        db.table("living_diary")
-        .select("id")
-        .neq("agent_id", agent_id)
-        .gte("created_at", since)
-        .limit(1)
-        .execute()
-        .data
-    )
-    return bool(rows)
+    for table in ("living_diary", "living_log"):
+        rows = (
+            db.table(table)
+            .select("id")
+            .neq("agent_id", agent_id)
+            .gte("created_at", since)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if rows:
+            return True
+    return False
 
 
 def should_act(agent_id: str) -> bool:
@@ -233,7 +236,11 @@ def trigger(agent_id: str) -> str:
     for weight, action_fn in _ACTIONS:
         cumulative += weight
         if roll < cumulative:
-            action_fn(agent)
+            try:
+                action_fn(agent)
+            except Exception as e:
+                log.error("[%s] trigger action %s failed: %s", agent["name"], action_fn.__name__, e)
+                raise
             return action_fn.__name__
 
     return "no_action"

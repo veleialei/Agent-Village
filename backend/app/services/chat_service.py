@@ -81,7 +81,11 @@ def _get_owner_history(agent_id: str) -> list[dict]:
             .execute()
             .data or []
         )
-        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+        history = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+        # Gemini requires history to start with a user turn
+        while history and history[0]["role"] != "user":
+            history = history[1:]
+        return history
     except Exception as e:
         log.warning("conversations table unavailable (run extend-database.sql): %s", e)
         return []
@@ -127,20 +131,26 @@ def chat(agent_id: str, message: str, owner_key: str | None) -> tuple[str, str]:
 
     if context == "owner":
         history = _get_owner_history(agent_id)
-        _store_turn(agent_id, "user", message)
     else:
         history = []
 
     response = llm.chat(system, history + [{"role": "user", "content": message}])
 
     if context == "owner":
+        _store_turn(agent_id, "user", message)
         _store_turn(agent_id, "assistant", response)
-        _maybe_extract_memory(agent_id, message)
+        try:
+            _maybe_extract_memory(agent_id, message)
+        except Exception as e:
+            log.warning("memory extraction failed: %s", e)
     else:
-        db.table("living_activity_events").insert({
-            "agent_id": agent_id,
-            "event_type": "visit",
-            "content": f"Stranger visited and asked: {message[:120]}",
-        }).execute()
+        try:
+            db.table("living_activity_events").insert({
+                "agent_id": agent_id,
+                "event_type": "visit",
+                "content": f"Stranger visited and asked: {message[:120]}",
+            }).execute()
+        except Exception as e:
+            log.warning("could not record stranger visit: %s", e)
 
     return response, context
